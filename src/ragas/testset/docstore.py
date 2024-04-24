@@ -21,6 +21,7 @@ from ragas.run_config import RunConfig
 from ragas.testset.utils import rng
 
 if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
     from llama_index.core.schema import Document as LlamaindexDocument
 
     from ragas.testset.extractor import Extractor
@@ -100,29 +101,28 @@ class DocumentStore(ABC):
         self.documents = {}
 
     @abstractmethod
-    def add_documents(self, docs: t.Sequence[Document], show_progress=True):
-        ...
+    def add_documents(
+        self,
+        docs: t.Sequence[Document],
+        show_progress=True,
+        callbacks: Callbacks = None,
+    ): ...
 
     @abstractmethod
-    def add_nodes(self, nodes: t.Sequence[Node], show_progress=True):
-        ...
+    def add_nodes(self, nodes: t.Sequence[Node], show_progress=True): ...
 
     @abstractmethod
-    def get_node(self, node_id: str) -> Node:
-        ...
+    def get_node(self, node_id: str) -> Node: ...
 
     @abstractmethod
-    def get_random_nodes(self, k=1) -> t.List[Node]:
-        ...
+    def get_random_nodes(self, k=1) -> t.List[Node]: ...
 
     @abstractmethod
     def get_similar(
         self, node: Node, threshold: float = 0.7, top_k: int = 3
-    ) -> t.Union[t.List[Document], t.List[Node]]:
-        ...
+    ) -> t.Union[t.List[Document], t.List[Node]]: ...
 
-    def set_run_config(self, run_config: RunConfig):
-        ...
+    def set_run_config(self, run_config: RunConfig): ...
 
 
 class SimilarityMode(str, Enum):
@@ -198,10 +198,14 @@ class InMemoryDocumentStore(DocumentStore):
     node_map: t.Dict[str, Node] = field(default_factory=dict)
     run_config: t.Optional[RunConfig] = None
 
-    def _embed_items(self, items: t.Union[t.Sequence[Document], t.Sequence[Node]]):
-        ...
+    def _embed_items(self, items: t.Union[t.Sequence[Document], t.Sequence[Node]]): ...
 
-    def add_documents(self, docs: t.Sequence[Document], show_progress=True):
+    def add_documents(
+        self,
+        docs: t.Sequence[Document],
+        show_progress=True,
+        callbacks: Callbacks = None,
+    ):
         """
         Add documents in batch mode.
         """
@@ -212,9 +216,11 @@ class InMemoryDocumentStore(DocumentStore):
             Node.from_langchain_document(d)
             for d in self.splitter.transform_documents(docs)
         ]
-        self.add_nodes(nodes, show_progress=show_progress)
+        self.add_nodes(nodes, show_progress=show_progress, callbacks=callbacks)
 
-    def add_nodes(self, nodes: t.Sequence[Node], show_progress=True):
+    def add_nodes(
+        self, nodes: t.Sequence[Node], show_progress=True, callbacks: Callbacks = None
+    ):
         assert self.embeddings is not None, "Embeddings must be set"
         assert self.extractor is not None, "Extractor must be set"
 
@@ -246,6 +252,7 @@ class InMemoryDocumentStore(DocumentStore):
                     self.extractor.extract,
                     n,
                     name=f"keyphrase-extraction[{i}]",
+                    callbacks=callbacks,
                 )
                 result_idx += 1
 

@@ -14,6 +14,9 @@ if t.TYPE_CHECKING:
     from ragas.testset.docstore import Node
 
 
+if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,8 +25,12 @@ class Extractor(ABC):
     llm: BaseRagasLLM
 
     @abstractmethod
-    async def extract(self, node: Node, is_async: bool = True) -> t.Any:
-        ...
+    async def extract(
+        self,
+        node: Node,
+        callbacks: Callbacks = None,
+        is_async: bool = True,
+    ) -> t.Any: ...
 
     def adapt(self, language: str, cache_dir: t.Optional[str] = None) -> None:
         """
@@ -44,9 +51,16 @@ class KeyphraseExtractor(Extractor):
         default_factory=lambda: keyphrase_extraction_prompt
     )
 
-    async def extract(self, node: Node, is_async: bool = True) -> t.List[str]:
+    async def extract(
+        self,
+        node: Node,
+        callbacks: Callbacks = None,
+        is_async: bool = True,
+    ) -> t.List[str]:
         prompt = self.extractor_prompt.format(text=node.page_content)
-        results = await self.llm.generate(prompt=prompt, is_async=is_async)
+        results = await self.llm.generate(
+            prompt=prompt, callbacks=callbacks, is_async=is_async
+        )
         keyphrases = await json_loader.safe_load(
             results.generations[0][0].text.strip(), llm=self.llm, is_async=is_async
         )

@@ -27,6 +27,11 @@ from ragas.testset.prompts import (
 )
 from ragas.testset.utils import rng
 
+
+if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +69,7 @@ class Evolution:
         default_factory=lambda: question_rewrite_prompt
     )
     max_tries: int = 5
+    callbacks: Callbacks = None
     is_async: bool = True
 
     @staticmethod
@@ -89,7 +95,13 @@ class Evolution:
             new_node.embedding = np.average(node_embeddings, axis=0)
         return new_node
 
-    def init(self, is_async: bool = True, run_config: t.Optional[RunConfig] = None):
+    def init(
+        self,
+        callbacks: Callbacks = None,
+        is_async: bool = True,
+        run_config: t.Optional[RunConfig] = None,
+    ):
+        self.callbacks = callbacks
         self.is_async = is_async
         if run_config is None:
             run_config = RunConfig()
@@ -123,7 +135,9 @@ class Evolution:
         assert self.generator_llm is not None, "generator_llm cannot be None"
 
         results = await self.generator_llm.generate(
-            prompt=prompt.format(question=question), is_async=self.is_async
+            prompt=prompt.format(question=question),
+            callbacks=self.callbacks,
+            is_async=self.is_async,
         )
         return results.generations[0][0].text.strip()
 
@@ -163,7 +177,7 @@ class Evolution:
                 feedback=feedback,
             )
             results = await self.generator_llm.generate(
-                prompt=prompt, is_async=self.is_async
+                prompt=prompt, callbacks=self.callbacks, is_async=self.is_async
             )
             question = results.generations[0][0].text.strip()
 
@@ -172,11 +186,9 @@ class Evolution:
     @abstractmethod
     async def _aevolve(
         self, current_tries: int, current_nodes: CurrentNodes
-    ) -> EvolutionOutput:
-        ...
+    ) -> EvolutionOutput: ...
 
-    async def filter_and_retry(self, question):
-        ...
+    async def filter_and_retry(self, question): ...
 
     async def generate_datarow(
         self,
@@ -192,7 +204,8 @@ class Evolution:
         results = await self.generator_llm.generate(
             prompt=self.find_relevant_context_prompt.format(
                 question=question, contexts=node_content
-            )
+            ),
+            callbacks=self.callbacks,
         )
         relevant_contexts_result = await json_loader.safe_load(
             results.generations[0][0].text.strip(), llm=self.generator_llm
@@ -222,7 +235,8 @@ class Evolution:
         results = await self.generator_llm.generate(
             prompt=self.question_answer_prompt.format(
                 question=question, context=merged_nodes.page_content
-            )
+            ),
+            callbacks=self.callbacks,
         )
         answer = await json_loader.safe_load(
             results.generations[0][0].text.strip(), self.generator_llm
@@ -287,7 +301,7 @@ class SimpleEvolution(Evolution):
         assert self.question_filter is not None, "question_filter cannot be None"
 
         merged_node = self.merge_nodes(current_nodes)
-        passed = await self.node_filter.filter(merged_node)
+        passed = await self.node_filter.filter(merged_node, callbacks=self.callbacks)
         if not passed["score"]:
             current_nodes = self._get_new_random_node()
             return await self.aretry_evolve(
@@ -299,11 +313,14 @@ class SimpleEvolution(Evolution):
             prompt=self.seed_question_prompt.format(
                 context=merged_node.page_content,
                 keyphrase=rng.choice(np.array(merged_node.keyphrases), size=1)[0],
-            )
+            ),
+            callbacks=self.callbacks,
         )
         seed_question = results.generations[0][0].text
         logger.info("seed question generated: %s", seed_question)
-        is_valid_question, feedback = await self.question_filter.filter(seed_question)
+        is_valid_question, feedback = await self.question_filter.filter(
+            seed_question, callbacks=self.callbacks
+        )
 
         if not is_valid_question:
             # get more context to rewrite question
@@ -311,7 +328,9 @@ class SimpleEvolution(Evolution):
                 seed_question, current_nodes, feedback
             )
             logger.info("rewritten question: %s", seed_question)
-            is_valid_question, _ = await self.question_filter.filter(seed_question)
+            is_valid_question, _ = await self.question_filter.filter(
+                seed_question, callbacks=self.callbacks
+            )
             if not is_valid_question:
                 # retry with new nodes added
                 current_nodes = self._get_new_random_node()
@@ -341,10 +360,15 @@ class ComplexEvolution(Evolution):
         default_factory=lambda: compress_question_prompt
     )
 
-    def init(self, is_async: bool = True, run_config: t.Optional[RunConfig] = None):
+    def init(
+        self,
+        callbacks: Callbacks = None,
+        is_async: bool = True,
+        run_config: t.Optional[RunConfig] = None,
+    ):
         if run_config is None:
             run_config = RunConfig()
-        super().init(is_async=is_async, run_config=run_config)
+        super().init(callbacks=callbacks, is_async=is_async, run_config=run_config)
 
         if self.se is None:
             # init simple evolution to get seed question
@@ -383,11 +407,12 @@ class ComplexEvolution(Evolution):
         result = await self.generator_llm.generate(
             prompt=question_prompt.format(
                 question=simple_question, context=merged_node.page_content
-            )
+            ),
+            callbacks=self.callbacks,
         )
         reasoning_question = result.generations[0][0].text.strip()
         is_valid_question, feedback = await self.question_filter.filter(
-            reasoning_question
+            reasoning_question, callbacks=self.callbacks
         )
         if not is_valid_question:
             # retry
@@ -395,7 +420,9 @@ class ComplexEvolution(Evolution):
                 reasoning_question, current_nodes, feedback
             )
             logger.info("rewritten question: %s", reasoning_question)
-            is_valid_question, _ = await self.question_filter.filter(reasoning_question)
+            is_valid_question, _ = await self.question_filter.filter(
+                reasoning_question, callbacks=self.callbacks
+            )
             if not is_valid_question:
                 # retry with new nodes added
                 current_nodes = self.se._get_new_random_node()
@@ -412,7 +439,9 @@ class ComplexEvolution(Evolution):
         )
 
         assert self.evolution_filter is not None, "evolution filter cannot be None"
-        if await self.evolution_filter.filter(simple_question, compressed_question):
+        if await self.evolution_filter.filter(
+            simple_question, compressed_question, callbacks=self.callbacks
+        ):
             # retry
             current_nodes = self.se._get_new_random_node()
             logger.debug(
@@ -482,12 +511,16 @@ class MultiContextEvolution(ComplexEvolution):
             context1=merged_node.page_content,
             context2=similar_node[0].page_content,
         )
-        results = await self.generator_llm.generate(prompt=prompt)
+        results = await self.generator_llm.generate(
+            prompt=prompt, callbacks=self.callbacks
+        )
         question = results.generations[0][0].text.strip()
         logger.debug(
             "[MultiContextEvolution] multicontext question generated: %s", question
         )
-        is_valid_question, feedback = await self.question_filter.filter(question)
+        is_valid_question, feedback = await self.question_filter.filter(
+            question, callbacks=self.callbacks
+        )
         if not is_valid_question:
             # retry
             # get more context to rewrite question
@@ -495,7 +528,9 @@ class MultiContextEvolution(ComplexEvolution):
                 question, current_nodes, feedback
             )
             logger.info("rewritten question: %s", question)
-            is_valid_question, _ = await self.question_filter.filter(question)
+            is_valid_question, _ = await self.question_filter.filter(
+                question, callbacks=self.callbacks
+            )
 
             if not is_valid_question:
                 # retry with new nodes added
@@ -512,7 +547,9 @@ class MultiContextEvolution(ComplexEvolution):
         )
 
         assert self.evolution_filter is not None, "evolution filter cannot be None"
-        if await self.evolution_filter.filter(simple_question, compressed_question):
+        if await self.evolution_filter.filter(
+            simple_question, compressed_question, callbacks=self.callbacks
+        ):
             # retry
             current_nodes = self.se._get_new_random_node()
             return await self.aretry_evolve(current_tries, current_nodes)
