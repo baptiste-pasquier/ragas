@@ -16,6 +16,8 @@ from ragas.testset.prompts import (
 )
 
 if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
     from ragas.llms.base import BaseRagasLLM
     from ragas.llms.prompt import Prompt
     from ragas.testset.docstore import Node
@@ -51,9 +53,9 @@ class NodeFilter(Filter):
         default_factory=lambda: context_scoring_prompt
     )
 
-    async def filter(self, node: Node) -> t.Dict:
+    async def filter(self, node: Node, callbacks: Callbacks = None) -> t.Dict:
         prompt = self.context_scoring_prompt.format(context=node.page_content)
-        results = await self.llm.generate(prompt=prompt)
+        results = await self.llm.generate(prompt=prompt, callbacks=callbacks)
         output = results.generations[0][0].text.strip()
         output = await context_scoring_parser.aparse(output, prompt, self.llm)
         output = output.dict() if output is not None else {}
@@ -84,9 +86,11 @@ class QuestionFilter(Filter):
         default_factory=lambda: filter_question_prompt
     )
 
-    async def filter(self, question: str) -> t.Tuple[bool, str]:
+    async def filter(
+        self, question: str, callbacks: Callbacks = None
+    ) -> t.Tuple[bool, str]:
         prompt = self.filter_question_prompt.format(question=question)
-        results = await self.llm.generate(prompt=prompt)
+        results = await self.llm.generate(prompt=prompt, callbacks=callbacks)
         results = results.generations[0][0].text.strip()
         results = await question_filter_parser.aparse(results, prompt, self.llm)
         results = results.dict() if results is not None else {}
@@ -115,11 +119,16 @@ class EvolutionFilter(Filter):
         default_factory=lambda: evolution_elimination_prompt
     )
 
-    async def filter(self, simple_question: str, compressed_question: str) -> bool:
+    async def filter(
+        self,
+        simple_question: str,
+        compressed_question: str,
+        callbacks: Callbacks = None,
+    ) -> bool:
         prompt = self.evolution_elimination_prompt.format(
             question1=simple_question, question2=compressed_question
         )
-        results = await self.llm.generate(prompt=prompt)
+        results = await self.llm.generate(prompt=prompt, callbacks=callbacks)
         results = results.generations[0][0].text.strip()
         results = await evolution_elimination_parser.aparse(results, prompt, self.llm)
         results = results.dict() if results is not None else {}

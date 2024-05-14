@@ -34,6 +34,7 @@ from ragas.utils import check_if_sum_is_close, deprecated, get_feature_language,
 
 if t.TYPE_CHECKING:
     from langchain_core.documents import Document as LCDocument
+    from langchain_core.callbacks import Callbacks
     from llama_index.core.schema import Document as LlamaindexDocument
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,7 @@ class TestsetGenerator:
         test_size: int,
         distributions: t.Optional[Distributions] = None,
         with_debugging_logs=False,
+        callbacks: Callbacks = None,
         is_async: bool = True,
         raise_exceptions: bool = True,
         run_config: t.Optional[RunConfig] = None,
@@ -167,13 +169,15 @@ class TestsetGenerator:
         distributions = distributions or {}
         # chunk documents and add to docstore
         self.docstore.add_documents(
-            [Document.from_langchain_document(doc) for doc in documents]
+            [Document.from_langchain_document(doc) for doc in documents],
+            callbacks=callbacks,
         )
 
         return self.generate(
             test_size=test_size,
             distributions=distributions,
             with_debugging_logs=with_debugging_logs,
+            callbacks=callbacks,
             is_async=is_async,
             raise_exceptions=raise_exceptions,
             run_config=run_config,
@@ -199,6 +203,7 @@ class TestsetGenerator:
         test_size: int,
         distributions: t.Optional[Distributions] = None,
         with_debugging_logs=False,
+        callbacks: Callbacks = None,
         is_async: bool = True,
         raise_exceptions: bool = True,
         run_config: t.Optional[RunConfig] = None,
@@ -219,7 +224,11 @@ class TestsetGenerator:
         # init filters and evolutions
         for evolution in distributions:
             self.init_evolution(evolution)
-            evolution.init(is_async=is_async, run_config=run_config)
+            evolution.init(
+                callbacks=callbacks,
+                is_async=is_async,
+                run_config=run_config,
+            )
 
         if with_debugging_logs:
             from ragas.utils import patch_logger
