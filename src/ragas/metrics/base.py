@@ -8,14 +8,20 @@ G - ground_truth: ground truth answer
 from __future__ import annotations
 
 import asyncio
+import logging
 import typing as t
 from abc import ABC, abstractmethod
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
 
+import numpy as np
+import openai
+
 from ragas.callbacks import new_group
 from ragas.run_config import RunConfig
+
+logger = logging.getLogger(__name__)
 
 if t.TYPE_CHECKING:
     from langchain_core.callbacks import Callbacks
@@ -53,13 +59,11 @@ def get_required_columns(
 class Metric(ABC):
     @property
     @abstractmethod
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
     @property
     @abstractmethod
-    def evaluation_mode(self) -> EvaluationMode:
-        ...
+    def evaluation_mode(self) -> EvaluationMode: ...
 
     @abstractmethod
     def init(self, run_config: RunConfig):
@@ -111,6 +115,14 @@ class Metric(ABC):
         )
         try:
             score = await self._ascore(row=row, callbacks=group_cm, is_async=is_async)
+        except openai.BadRequestError as e:
+            if not group_cm.ended:
+                rm.on_chain_error(e)
+            if e.error.code == "content_filter":
+                logger.error("OpenAI content filtering error.", exc_info=True)
+                return np.nan
+            else:
+                raise e
         except Exception as e:
             if not group_cm.ended:
                 rm.on_chain_error(e)
@@ -121,8 +133,9 @@ class Metric(ABC):
         return score
 
     @abstractmethod
-    async def _ascore(self, row: t.Dict, callbacks: Callbacks, is_async: bool) -> float:
-        ...
+    async def _ascore(
+        self, row: t.Dict, callbacks: Callbacks, is_async: bool
+    ) -> float: ...
 
 
 @dataclass
@@ -192,4 +205,3 @@ class Ensember:
 
 
 ensembler = Ensember()
-
