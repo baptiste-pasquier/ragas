@@ -7,6 +7,7 @@ dependencies = [
     "langchain",
     "langchain-core",
     "langchain-community",
+    "langchain_google_vertexai",
     "langchain_openai",
     "openai>1",
     "pysbd>=0.3.4",
