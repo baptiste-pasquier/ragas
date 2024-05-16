@@ -199,6 +199,18 @@ class LangchainLLMWrapper(BaseRagasLLM):
             self.langchain_llm.request_timeout = run_config.timeout
             self.run_config.exception_types = RateLimitError
 
+        # configure if using VertexAI API
+        if isinstance(self.langchain_llm, VertexAI) or isinstance(
+            self.langchain_llm, ChatVertexAI
+        ):
+            try:
+                from google.api_core.exceptions import ResourceExhausted
+            except ImportError:
+                raise ImportError(
+                    "google.api_core.exceptions.ResourceExhausted not found. Please install langchain_google_vertexai package as `pip install langchain_google_vertexai`"
+                )
+            self.run_config.exception_types = ResourceExhausted
+
 
 def llm_factory(
     model: str = "gpt-3.5-turbo-16k", run_config: t.Optional[RunConfig] = None
