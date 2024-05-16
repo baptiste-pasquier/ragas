@@ -7,10 +7,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import partial
 
-from langchain_community.chat_models.vertexai import ChatVertexAI
-from langchain_community.llms import VertexAI
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.outputs import LLMResult
+from langchain_google_vertexai import VertexAI, ChatVertexAI
 from langchain_openai.chat_models import AzureChatOpenAI, ChatOpenAI
 from langchain_openai.llms import AzureOpenAI, OpenAI
 from langchain_openai.llms.base import BaseOpenAI
@@ -29,8 +28,6 @@ MULTIPLE_COMPLETION_SUPPORTED = [
     ChatOpenAI,
     AzureOpenAI,
     AzureChatOpenAI,
-    ChatVertexAI,
-    VertexAI,
 ]
 
 
@@ -199,6 +196,18 @@ class LangchainLLMWrapper(BaseRagasLLM):
                 )
             self.langchain_llm.request_timeout = run_config.timeout
             self.run_config.exception_types = RateLimitError
+
+        # configure if using VertexAI API
+        if isinstance(self.langchain_llm, VertexAI) or isinstance(
+            self.langchain_llm, ChatVertexAI
+        ):
+            try:
+                from google.api_core.exceptions import ResourceExhausted
+            except ImportError:
+                raise ImportError(
+                    "google.api_core.exceptions.ResourceExhausted not found. Please install langchain_google_vertexai package as `pip install langchain_google_vertexai`"
+                )
+            self.run_config.exception_types = ResourceExhausted
 
 
 def llm_factory(
