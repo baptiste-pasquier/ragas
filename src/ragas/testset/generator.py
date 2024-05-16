@@ -105,7 +105,6 @@ class TestsetGenerator:
             docstore=docstore,
         )
 
-
     @classmethod
     @deprecated("0.1.4", removal="0.2.0", alternative="from_langchain")
     def with_openai(
@@ -218,7 +217,9 @@ class TestsetGenerator:
 
         # configure run_config for docstore
         if run_config is None:
-            run_config = RunConfig(max_retries=15, max_wait=90)
+            run_config = RunConfig(
+                max_retries=15, wait_kwargs={"multiplier": 1, "max": 90}
+            )
         self.docstore.set_run_config(run_config)
 
         # init filters and evolutions

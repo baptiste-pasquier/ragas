@@ -1,6 +1,6 @@
 import logging
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from tenacity import (
     AsyncRetrying,
@@ -12,6 +12,7 @@ from tenacity import (
     wait_random_exponential,
 )
 from tenacity.after import after_nothing
+from tenacity.wait import wait_base
 
 
 @dataclass
@@ -22,13 +23,16 @@ class RunConfig:
 
     timeout: int = 60
     max_retries: int = 10
-    max_wait: int = 60
     max_workers: int = 16
     exception_types: t.Union[
         t.Type[BaseException],
         t.Tuple[t.Type[BaseException], ...],
     ] = (Exception,)
     log_tenacity: bool = False
+    wait: type[wait_base] = wait_random_exponential
+    wait_kwargs: t.Dict[str, t.Any] = field(
+        default_factory=lambda: {"multiplier": 1, "max": 60}
+    )
 
 
 def add_retry(fn: WrappedFn, run_config: RunConfig) -> WrappedFn:
@@ -40,7 +44,7 @@ def add_retry(fn: WrappedFn, run_config: RunConfig) -> WrappedFn:
         tenacity_logger = after_nothing
 
     r = Retrying(
-        wait=wait_random_exponential(multiplier=1, max=run_config.max_wait),
+        wait=run_config.wait(**run_config.wait_kwargs),
         stop=stop_after_attempt(run_config.max_retries),
         retry=retry_if_exception_type(run_config.exception_types),
         reraise=True,
@@ -61,7 +65,7 @@ def add_async_retry(fn: WrappedFn, run_config: RunConfig) -> WrappedFn:
         tenacity_logger = after_nothing
 
     r = AsyncRetrying(
-        wait=wait_random_exponential(multiplier=1, max=run_config.max_wait),
+        wait=run_config.wait(**run_config.wait_kwargs),
         stop=stop_after_attempt(run_config.max_retries),
         retry=retry_if_exception_type(run_config.exception_types),
         reraise=True,
