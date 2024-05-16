@@ -28,8 +28,6 @@ MULTIPLE_COMPLETION_SUPPORTED = [
     ChatOpenAI,
     AzureOpenAI,
     AzureChatOpenAI,
-    ChatVertexAI,
-    VertexAI,
 ]
 
 
