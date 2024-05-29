@@ -4,6 +4,7 @@ import logging
 import typing as t
 from dataclasses import dataclass
 from random import choices
+from typing import Collection, Literal, Union
 
 import pandas as pd
 from datasets import Dataset
@@ -81,6 +82,7 @@ class TestsetGenerator:
         docstore: t.Optional[DocumentStore] = None,
         run_config: t.Optional[RunConfig] = None,
         chunk_size: int = 1024,
+        disallowed_special: Union[Literal["all"], Collection[str]] = "all",
     ) -> "TestsetGenerator":
         generator_llm_model = LangchainLLMWrapper(generator_llm)
         critic_llm_model = LangchainLLMWrapper(critic_llm)
@@ -90,7 +92,11 @@ class TestsetGenerator:
         if docstore is None:
             from langchain.text_splitter import TokenTextSplitter
 
-            splitter = TokenTextSplitter(chunk_size=chunk_size, chunk_overlap=0)
+            splitter = TokenTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=0,
+                disallowed_special=disallowed_special,
+            )
             docstore = InMemoryDocumentStore(
                 splitter=splitter,
                 embeddings=embeddings_model,
@@ -103,7 +109,6 @@ class TestsetGenerator:
             embeddings=embeddings_model,
             docstore=docstore,
         )
-
 
     @classmethod
     @deprecated("0.1.4", removal="0.2.0", alternative="from_langchain")
