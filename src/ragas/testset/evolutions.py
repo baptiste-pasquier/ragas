@@ -48,7 +48,7 @@ EvolutionOutput = t.Tuple[str, CurrentNodes, str]
 class DataRow(BaseModel):
     question: str
     contexts: t.List[str]
-    ground_truth: t.Union[str, float] = np.nan
+    ground_truth: t.Union[float, str] = np.nan
     evolution_type: str
     metadata: t.List[dict]
 

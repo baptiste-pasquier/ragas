@@ -188,7 +188,7 @@ def get_top_k_embeddings(
     return result_similarities, result_ids
 
 
-@dataclass
+@dataclass(repr=False)
 class InMemoryDocumentStore(DocumentStore):
     splitter: TextSplitter
     extractor: t.Optional[Extractor] = field(default=None, repr=False)
