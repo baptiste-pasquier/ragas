@@ -6,13 +6,17 @@ from ragas.testset.graph import Node
 from ragas.testset.transforms.base import Extractor
 
 
+if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
+
 @dataclass
 class RegexBasedExtractor(Extractor):
     pattern: str = ""
     is_multiline: bool = False
     property_name: str = "regex"
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         text = node.get_property("page_content")
         if not isinstance(text, str):
             raise ValueError(

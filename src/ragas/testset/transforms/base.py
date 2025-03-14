@@ -10,6 +10,9 @@ from ragas.llms import BaseRagasLLM, llm_factory
 from ragas.prompt import PromptMixin
 from ragas.testset.graph import KnowledgeGraph, Node, Relationship
 
+if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
 DEFAULT_TOKENIZER = tiktoken.get_encoding("o200k_base")
 
 logger = logging.getLogger(__name__)
@@ -36,7 +39,7 @@ class BaseGraphTransformation(ABC):
             self.name = self.__class__.__name__
 
     @abstractmethod
-    async def transform(self, kg: KnowledgeGraph) -> t.Any:
+    async def transform(self, kg: KnowledgeGraph, callbacks: Callbacks) -> t.Any:
         """
         Abstract method to transform the KnowledgeGraph. Transformations should be
         idempotent, meaning that applying the transformation multiple times should
@@ -79,7 +82,9 @@ class BaseGraphTransformation(ABC):
         )
 
     @abstractmethod
-    def generate_execution_plan(self, kg: KnowledgeGraph) -> t.List[t.Coroutine]:
+    def generate_execution_plan(
+        self, kg: KnowledgeGraph, callbacks: Callbacks
+    ) -> t.List[t.Coroutine]:
         """
         Generates a list of coroutines to be executed in sequence by the Executor. This
         coroutine will, upon execution, write the transformation into the KnowledgeGraph.
@@ -113,7 +118,9 @@ class Extractor(BaseGraphTransformation):
     """
 
     async def transform(
-        self, kg: KnowledgeGraph
+        self,
+        kg: KnowledgeGraph,
+        callbacks: Callbacks,
     ) -> t.List[t.Tuple[Node, t.Tuple[str, t.Any]]]:
         """
         Transforms the KnowledgeGraph by extracting properties from its nodes. Uses
@@ -140,10 +147,13 @@ class Extractor(BaseGraphTransformation):
          (Node(id=2, properties={"name": "Node2"}), ("property_name", "extracted_value"))]
         """
         filtered = self.filter(kg)
-        return [(node, await self.extract(node)) for node in filtered.nodes]
+        return [
+            (node, await self.extract(node, callbacks=callbacks))
+            for node in filtered.nodes
+        ]
 
     @abstractmethod
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         """
         Abstract method to extract a specific property from a node.
 
@@ -159,7 +169,9 @@ class Extractor(BaseGraphTransformation):
         """
         pass
 
-    def generate_execution_plan(self, kg: KnowledgeGraph) -> t.List[t.Coroutine]:
+    def generate_execution_plan(
+        self, kg: KnowledgeGraph, callbacks: Callbacks
+    ) -> t.List[t.Coroutine]:
         """
         Generates a list of coroutines to be executed in parallel by the Executor.
 
@@ -175,7 +187,9 @@ class Extractor(BaseGraphTransformation):
         """
 
         async def apply_extract(node: Node):
-            property_name, property_value = await self.extract(node)
+            property_name, property_value = await self.extract(
+                node, callbacks=callbacks
+            )
             if node.get_property(property_name) is None:
                 node.add_property(property_name, property_value)
             else:
@@ -197,7 +211,6 @@ class LLMBasedExtractor(Extractor, PromptMixin):
     tokenizer: Encoding = DEFAULT_TOKENIZER
 
     def split_text_by_token_limit(self, text, max_token_limit):
-
         # Tokenize the entire input string
         tokens = self.tokenizer.encode(text)
 
@@ -346,9 +359,7 @@ class RelationshipBuilder(BaseGraphTransformation):
 
 @dataclass
 class NodeFilter(BaseGraphTransformation):
-
     async def transform(self, kg: KnowledgeGraph) -> KnowledgeGraph:
-
         filtered = self.filter(kg)
 
         for node in filtered.nodes:

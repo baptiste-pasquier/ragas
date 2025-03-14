@@ -5,6 +5,9 @@ from ragas.embeddings import BaseRagasEmbeddings, embedding_factory
 from ragas.testset.graph import Node
 from ragas.testset.transforms.base import Extractor
 
+if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
 
 @dataclass
 class EmbeddingExtractor(Extractor):
@@ -25,7 +28,7 @@ class EmbeddingExtractor(Extractor):
     embed_property_name: str = "page_content"
     embedding_model: BaseRagasEmbeddings = field(default_factory=embedding_factory)
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         """
         Extracts the embedding for a given node.
 

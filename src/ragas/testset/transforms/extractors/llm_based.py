@@ -7,6 +7,9 @@ from ragas.prompt import PydanticPrompt, StringIO
 from ragas.testset.graph import Node
 from ragas.testset.transforms.base import LLMBasedExtractor
 
+if t.TYPE_CHECKING:
+    from langchain_core.callbacks import Callbacks
+
 
 class TextWithExtractionLimit(BaseModel):
     text: str
@@ -172,12 +175,14 @@ class SummaryExtractor(LLMBasedExtractor):
     property_name: str = "summary"
     prompt: SummaryExtractorPrompt = SummaryExtractorPrompt()
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, None
         chunks = self.split_text_by_token_limit(node_text, self.max_token_limit)
-        result = await self.prompt.generate(self.llm, data=StringIO(text=chunks[0]))
+        result = await self.prompt.generate(
+            self.llm, data=StringIO(text=chunks[0]), callbacks=callbacks
+        )
         return self.property_name, result.text
 
 
@@ -198,7 +203,7 @@ class KeyphrasesExtractor(LLMBasedExtractor):
     prompt: KeyphrasesExtractorPrompt = KeyphrasesExtractorPrompt()
     max_num: int = 5
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, None
@@ -206,7 +211,9 @@ class KeyphrasesExtractor(LLMBasedExtractor):
         keyphrases = []
         for chunk in chunks:
             result = await self.prompt.generate(
-                self.llm, data=TextWithExtractionLimit(text=chunk, max_num=self.max_num)
+                self.llm,
+                data=TextWithExtractionLimit(text=chunk, max_num=self.max_num),
+                callbacks=callbacks,
             )
             keyphrases.extend(result.keyphrases)
         return self.property_name, keyphrases
@@ -228,12 +235,14 @@ class TitleExtractor(LLMBasedExtractor):
     property_name: str = "title"
     prompt: TitleExtractorPrompt = TitleExtractorPrompt()
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, None
         chunks = self.split_text_by_token_limit(node_text, self.max_token_limit)
-        result = await self.prompt.generate(self.llm, data=StringIO(text=chunks[0]))
+        result = await self.prompt.generate(
+            self.llm, data=StringIO(text=chunks[0]), callbacks=callbacks
+        )
         return self.property_name, result.text
 
 
@@ -254,7 +263,7 @@ class HeadlinesExtractor(LLMBasedExtractor):
     prompt: HeadlinesExtractorPrompt = HeadlinesExtractorPrompt()
     max_num: int = 5
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, None
@@ -262,7 +271,9 @@ class HeadlinesExtractor(LLMBasedExtractor):
         headlines = []
         for chunk in chunks:
             result = await self.prompt.generate(
-                self.llm, data=TextWithExtractionLimit(text=chunk, max_num=self.max_num)
+                self.llm,
+                data=TextWithExtractionLimit(text=chunk, max_num=self.max_num),
+                callbacks=callbacks,
             )
             if result:
                 headlines.extend(result.headlines)
@@ -286,7 +297,9 @@ class NERExtractor(LLMBasedExtractor):
     prompt: PydanticPrompt[TextWithExtractionLimit, NEROutput] = NERPrompt()
     max_num_entities: int = 10
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.List[str]]:
+    async def extract(
+        self, node: Node, callbacks: Callbacks
+    ) -> t.Tuple[str, t.List[str]]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, []
@@ -296,6 +309,7 @@ class NERExtractor(LLMBasedExtractor):
             result = await self.prompt.generate(
                 self.llm,
                 data=TextWithExtractionLimit(text=chunk, max_num=self.max_num_entities),
+                callbacks=callbacks,
             )
             entities.extend(result.entities)
         return self.property_name, entities
@@ -306,9 +320,7 @@ class TopicDescription(BaseModel):
 
 
 class TopicDescriptionPrompt(PydanticPrompt[StringIO, TopicDescription]):
-    instruction: str = (
-        "Provide a concise description of the main topic(s) discussed in the following text."
-    )
+    instruction: str = "Provide a concise description of the main topic(s) discussed in the following text."
     input_model: t.Type[StringIO] = StringIO
     output_model: t.Type[TopicDescription] = TopicDescription
     examples: t.List[t.Tuple[StringIO, TopicDescription]] = [
@@ -339,12 +351,14 @@ class TopicDescriptionExtractor(LLMBasedExtractor):
     property_name: str = "topic_description"
     prompt: PydanticPrompt = TopicDescriptionPrompt()
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.Any]:
+    async def extract(self, node: Node, callbacks: Callbacks) -> t.Tuple[str, t.Any]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, None
         chunks = self.split_text_by_token_limit(node_text, self.max_token_limit)
-        result = await self.prompt.generate(self.llm, data=StringIO(text=chunks[0]))
+        result = await self.prompt.generate(
+            self.llm, data=StringIO(text=chunks[0]), callbacks=callbacks
+        )
         return self.property_name, result.description
 
 
@@ -395,7 +409,9 @@ class ThemesExtractor(LLMBasedExtractor):
     prompt: ThemesAndConceptsExtractorPrompt = ThemesAndConceptsExtractorPrompt()
     max_num_themes: int = 10
 
-    async def extract(self, node: Node) -> t.Tuple[str, t.List[str]]:
+    async def extract(
+        self, node: Node, callbacks: Callbacks
+    ) -> t.Tuple[str, t.List[str]]:
         node_text = node.get_property("page_content")
         if node_text is None:
             return self.property_name, []
@@ -405,6 +421,7 @@ class ThemesExtractor(LLMBasedExtractor):
             result = await self.prompt.generate(
                 self.llm,
                 data=TextWithExtractionLimit(text=chunk, max_num=self.max_num_themes),
+                callbacks=callbacks,
             )
             themes.extend(result.output)
 
